@@ -12,10 +12,12 @@ Ubuntu 22.04, Python 3.10, RO2 Humble
 
 ## Build
 
+Build only robotiq_sock_driver_msgs package:
 ```
 colcon build --packages-select robotiq_sock_driver_msgs
 ```
 
+Build only robotiq_sock_driver package:
 ```
 colcon build --packages-select robotiq_sock_driver
 ```
@@ -23,34 +25,42 @@ colcon build --packages-select robotiq_sock_driver
 
 ## Usage
 
+Running a node with parameters
 ```
-ros2 launch robotiq_sock_driver gripper_driver ip_address:=192.168.10.4 port:=63352
+ros2 launch robotiq_sock_driver gripper_driver.launch.py
+```
+
+Running a node with arguments (arguments currently not work):
+```
+ros2 launch robotiq_sock_driver gripper_driver.launch.py \
+ip_address:=192.168.10.4 port:=63352 \
+inversed_pos:=1 \
+auto_calibrate:=1
 ```
 
 
 ### Topics
 
 ```
-/gripper/cmd [robotiq_sock_driiver_msgs/msg/GripperCmd]
-/gripper/stat [robotiq_sock_driiver_msgs/msg/GripperStat]
+/gripper/cmd [robotiq_sock_driver_msgs/msg/GripperCmd]
+/gripper/stat [robotiq_sock_driver_msgs/msg/GripperStat]
 /gripper/joint_states [sensor_msgs/msg/JointState]
+
 ```
 
 
 ### Testing command
 
 ```
-ros2 topic pub --once \
-/gripper/cmd robotiq_sock_driiver_msgs/msg/GripperCmd \
-"{\
-emergency_release: false, \
-emergency_release_dir: true, \
-stop: false, \
-position: 0, \
-speed: 0, \
-force: 0, \
-}"
+ros2 topic pub --once /gripper/cmd robotiq_sock_driver_msgs/msg/GripperCmd "{emergency_release: false, emergency_release_dir: 1, stop: false, position: 0.0, speed: 0.0, force: 0.0}"
 ```
+
+
+## TODOs
+
+1. Fix duplicated auto-calibration.
+2. Change all parameters to arguments.
+
 
 
 ## Reference

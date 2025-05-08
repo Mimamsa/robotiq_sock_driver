@@ -55,7 +55,6 @@ class RobotiqGripper:
     PRE = 'PRE'  # position request (echo of last commanded position)
     OBJ = 'OBJ'  # object detection (0 = moving, 1 = outer grip, 2 = inner grip, 3 = no object at rest)
     FLT = 'FLT'  # fault (0=ok, see manual for errors if not zero)
-    CU = 'CU'    # current of the motor drive, value between 0x00 and 0xFF, approximate current equivalent is 10 * value read in mA.
 
     ENCODING = 'UTF-8'  # ASCII and UTF-8 both seem to work
 
@@ -250,7 +249,7 @@ class RobotiqGripper:
 
     # =============== high level API ===============
 
-    def activate(self, auto_calibrate: bool = True):
+    def activate(self, auto_calibrate: bool = False):
         """Resets the activation flag in the gripper, and sets it back to one, clearing previous fault flags.
         Args
             auto_calibrate (bool): Whether to calibrate the minimum and maximum positions based on actual motion.
@@ -341,9 +340,9 @@ class RobotiqGripper:
             (float): The gripper's opening postion.
         """
         if self.inversed_pos:
-            return self.get_reachable_min_position()
-        else:
             return self.get_reachable_max_position()
+        else:
+            return self.get_reachable_min_position()
 
     def get_closed_position(self) -> float:
         """Returns what is considered the closed position for gripper.
@@ -351,9 +350,9 @@ class RobotiqGripper:
             (float): The gripper's closing postion.
         """
         if self.inversed_pos:
-            return self.get_reachable_max_position()
-        else:
             return self.get_reachable_min_position()
+        else:
+            return self.get_reachable_max_position()
 
     def is_open(self):
         """Returns whether the current position is considered as being fully open.
@@ -437,9 +436,12 @@ class RobotiqGripper:
             raise RuntimeError(f"Calibration failed opening to start: {str(status)}")
 
         # try to close as far as possible, and record the number
-        (position, status) = self.move_and_wait_for_pos(self.get_closed_position(), cali_speed, cali_force)
+        (_, status) = self.move_and_wait_for_pos(self.get_closed_position(), cali_speed, cali_force)
         if RobotiqGripper.ObjectStatus(status) != RobotiqGripper.ObjectStatus.AT_DEST:
             raise RuntimeError(f"Calibration failed because of an object: {str(status)}")
+
+        time.sleep(2)
+        position = self.get_current_position()
 
         if self.inversed_pos:
             assert position >= self._min_position
@@ -449,9 +451,12 @@ class RobotiqGripper:
             max_pos = position
 
         # try to open as far as possible, and record the number
-        (position, status) = self.move_and_wait_for_pos(self.get_open_position(), cali_speed, cali_force)
+        (_, status) = self.move_and_wait_for_pos(self.get_open_position(), cali_speed, cali_force)
         if RobotiqGripper.ObjectStatus(status) != RobotiqGripper.ObjectStatus.AT_DEST:
             raise RuntimeError(f"Calibration failed because of an object: {str(status)}")
+        
+        time.sleep(2)
+        position = self.get_current_position()
         
         if self.inversed_pos:
             assert position <= self._max_position
@@ -479,7 +484,7 @@ class RobotiqGripper:
         """
         # invert position
         if self.inversed_pos:
-                position = self._max_position - position
+            position = self._max_position - position
 
         # clip `target_pos` to the reachable range (should be placed after inverted & before commanded)
         clip_pos = clip_val(position, [self._reachable_min_position, self._reachable_max_position])
@@ -490,11 +495,14 @@ class RobotiqGripper:
         norm_for = norm_val(force, [self._min_force, self._max_force])
 
         # moves to the given position with the given speed and force
+        #var_dict = OrderedDict([(self.POS, norm_pos), (self.SPE, norm_spe), (self.FOR, norm_for), (self.GTO, 1), (self.ACT, 1)])
         var_dict = OrderedDict([(self.POS, norm_pos), (self.SPE, norm_spe), (self.FOR, norm_for), (self.GTO, 1)])
         set_ok = self._set_vars(var_dict)
 
-        # unnormalize
-        ret_pos = unnorm_val(clip_pos, [self._min_position, self._max_position])
+        if self.inversed_pos:
+            ret_pos = self._max_position - clip_pos
+        else:
+            ret_pos = clip_pos
 
         return set_ok, ret_pos
 
@@ -515,7 +523,10 @@ class RobotiqGripper:
             raise RuntimeError("Failed to set variables for move.")
 
         # wait until the gripper acknowledges that it will try to go to the requested position
-        while self.get_position_requested() != cmdpos:
+        req_pos = self.get_position_requested()
+        while (req_pos - cmd_pos) > 3.0:
+            req_pos = self.get_position_requested()
+            #print(req_pos, cmd_pos)
             time.sleep(0.001)
 
         # wait until not moving
@@ -530,7 +541,8 @@ class RobotiqGripper:
         
     def stop(self):
         """Stop gripper action """
-        set_ok = self._set_var(self.GTO, 0)
+        #set_ok = self._set_vars([(self.GTO, 0), (self.ACT, 1)])
+        set_ok = self._set_vars([(self.GTO, 0)])
         return set_ok
  
     def activate_emergency_release(self, open_gripper=True):
@@ -547,19 +559,20 @@ class RobotiqGripper:
         return set_ok
 
     def is_ready(self):
-        return (self._get_var(self.STA) == GripperStatus.ACTIVE) and (self._get_var(self.ACT) == 1)
+        #cur_obj = self._get_var(self.STA)
+        #act = self._get_var(self.ACT)
+        #return (RobotiqGripper.GripperStatus(cur_obj) == RobotiqGripper.GripperStatus.ACTIVE) and (act == 1)
+        return self.is_active()
 
     def is_reset(self):
-        return (self._get_var(self.STA) == GripperStatus.ACTIVATING) or (self._get_var(self.ACT) == 0)
+        cur_obj = self._get_var(self.STA)
+        return (RobotiqGripper.GripperStatus(cur_obj) == RobotiqGripper.GripperStatus.ACTIVATING) or (self._get_var(self.ACT) == 0)
 
     def is_moving(self):
-        object_status = self._get_var(self.OBJ)
-        return (object_status != ObjectStatus.MOVING)
+        obj_stat = self._get_var(self.OBJ)
+        return (RobotiqGripper.ObjectStatus(obj_stat) == RobotiqGripper.ObjectStatus.MOVING)
     
     def object_detected(self):
-        object_status = self._get_var(self.OBJ)
-        return (object_status == ObjectStatus.STOPPED_OUTER_OBJECT) or \
-            (object_status == ObjectStatus.STOPPED_INNER_OBJECT)
-
-    def get_current(self):
-        return self._get_var(self.CU) * 0.1
+        obj_stat = self._get_var(self.OBJ)
+        return (RobotiqGripper.ObjectStatus(obj_stat) == RobotiqGripper.ObjectStatus.STOPPED_OUTER_OBJECT) or \
+            (RobotiqGripper.ObjectStatus(obj_stat) == RobotiqGripper.ObjectStatus.STOPPED_INNER_OBJECT)

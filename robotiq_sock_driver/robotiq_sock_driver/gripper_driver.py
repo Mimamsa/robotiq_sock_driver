@@ -9,9 +9,10 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import ExternalShutdownException
 
-from robotiq_sock_driver import RobotiqGripper
+from robotiq_sock_driver.robotiq_gripper import RobotiqGripper
 from robotiq_sock_driver_msgs.msg import GripperCmd, GripperStat
 from sensor_msgs.msg import JointState
+import time
 
 
 class GripperDriver(Node):
@@ -20,31 +21,43 @@ class GripperDriver(Node):
 
         self.declare_parameter('num_grippers', 1)
         self.declare_parameter('ip_address', '192.168.10.4')
-        self.declare_parameter('port', '63352')
+        self.declare_parameter('port', 63352)
+        self.declare_parameter('inversed_pos', True)
+        self.declare_parameter('auto_calibrate', True)
 
         self._num_grippers = self.get_parameter('num_grippers').get_parameter_value().integer_value
         self._ip_address = self.get_parameter('ip_address').get_parameter_value().string_value
-        self._port = self.get_parameter('port').get_parameter_value().string_value
+        self._port = self.get_parameter('port').get_parameter_value().integer_value
+        self.inversed_pos = self.get_parameter('inversed_pos').get_parameter_value().bool_value
+        self.auto_calibrate = self.get_parameter('auto_calibrate').get_parameter_value().bool_value
+
+        #self._num_grippers = num_grippers
+        #self._ip_address = ip_address
+        #self._port = port
+        #self._inversed_pos = inversed_pos
+        #self._auto_calibrate = auto_calibrate
 
         self.get_logger().info("Parameters Num grippers: %i, IP address: %s, Port: %s " % (self._num_grippers, self._ip_address, self._port))
 
         # Connect to gripper
-        self._gripper = RobotiqGripper(hostname=self._ip_address, port=self._port)
+        self._gripper = RobotiqGripper(hostname=self._ip_address, port=self._port, inversed_pos=self.inversed_pos)
         try:
             self._gripper.connect()
         except Exception as e:
             self.get_logger().error("Unable to open commport to %s: " % self._ip_address)
             self.get_logger().error(e)
             return
+        self.get_logger().info('Gripper connected.')
 
         # Create publishers & subscribers
         if (self._num_grippers == 1):
-            self.create_subscription(GripperCmd, "/gripper/cmd", self._update_gripper_cmd, queue_size=3)
-            self._gripper_pub = self.create_publisher(GripperStat, '/gripper/stat', queue_size=3)
-            self._gripper_joint_state_pub = self.create_publisher(JointState, '/gripper/joint_states', queue_size=3)
+            self.create_subscription(GripperCmd, "/gripper/cmd", self._update_gripper_cmd, 10)
+            self._gripper_pub = self.create_publisher(GripperStat, '/gripper/stat', 10)
+            self._gripper_joint_state_pub = self.create_publisher(JointState, '/gripper/joint_states', 10)
         else:
             self.get_logger().error("Number of grippers not supported (needs to be 1)")
             return
+        self.get_logger().info('Publisher & subscriber created.')
 
         # Create internal variables
         self._prev_js_pos = 0.0  # previous joint position
@@ -54,19 +67,32 @@ class GripperDriver(Node):
 
         # Test activating gripper
         try:
-            self._gripper.activate(auto_calibrate=True)
+            self._gripper.activate(auto_calibrate=False)
         except Exception as e:
             self.get_logger().error("Failed to activate gripper....ABORTING")
             self.get_logger().error(e)
             return
+        self.get_logger().info('Gripper activated.')
+        
+        print('self.auto_calibrate: ', self.auto_calibrate)
+        
+        # Auto-calibrate
+        if self.auto_calibrate:
+            self._gripper.auto_calibrate()
+            self.get_logger().info('Auto-calibration finished.')
+            open_pos = self._gripper.get_open_position()
+            closed_pos = self._gripper.get_closed_position()
+            self.get_logger().info('Reachable open/closed position: [{}, {}]'.format(open_pos, closed_pos))
+
 
         self._last_time = self.get_time()
         
-        # 100 Hz timer 
-        self.timer = self.create_timer(0.01, self._timer_callback)
+        # 5 Hz timer 
+        self.timer = self.create_timer(0.2, self._timer_callback)
+        self.get_logger().info('Timer created.')
 
     def __del__(self):
-        self.shutdown()
+        self._gripper.disconnect()
 
     def get_time(self):
         time_msg = self.get_clock().now().to_msg()
@@ -81,7 +107,7 @@ class GripperDriver(Node):
             return cmd
 
     def _update_gripper_cmd(self, cmd):
-        """Callback for publisher """
+        """Callback for subscriber """
         if (True == cmd.emergency_release):
             self._gripper.activate_emergency_release(open_gripper=cmd.emergency_release_dir)
             return
@@ -91,11 +117,11 @@ class GripperDriver(Node):
         if (True == cmd.stop):
             self._gripper.stop()
         else:
-            pos = self._clamp_cmd(cmd.position, 0, 50)  # stroke: 0 mm - 50 mm
+            pos = self._clamp_cmd(cmd.position, 0, 60)  # stroke: 0 mm - 50 mm
             vel = self._clamp_cmd(cmd.speed, 20, 150)  # speed: 20 mm/s - 150 mm/s
             force = self._clamp_cmd(cmd.force, 20, 185)  # grip force: 20 N - 185 N
-            #self._gripper.move(pos=pos, vel=vel, force=force)  # for real-time control
-            self._gripper.move_and_wait_for_pos(pos=pos, vel=vel, force=force)
+            #self._gripper.move(position=pos, speed=vel, force=force)  # for real-time control
+            self._gripper.move_and_wait_for_pos(position=pos, speed=vel, force=force)
 
     def _update_gripper_stat(self):
         """ """
@@ -108,7 +134,7 @@ class GripperDriver(Node):
         stat.fault_status = self._gripper.get_fault_status()
         stat.position = self._gripper.get_current_position()
         stat.requested_position = self._gripper.get_position_requested()
-        stat.current = self._gripper.get_current()
+        stat.current = 0.0  #self._gripper.get_current()
         return stat
 
     def _update_gripper_joint_state(self):
@@ -124,14 +150,14 @@ class GripperDriver(Node):
         # update velocity
         dt = self.get_time() - self._prev_js_time
         self._prev_js_time = self.get_time()
-        js.velocity = [(pos-self._prev_js_pos[dev])/dt]
+        js.velocity = [(pos-self._prev_js_pos)/dt]
         self._prev_js_pos = pos
         return js
 
     def _timer_callback(self):
         """Callback for the 2 publisher """
         dt = self.get_time() - self._last_time
-        # print("cb:", dt)
+        #print("cb:", dt)
 
         if (0 == self._driver_state):
             if (dt < 0.5):
@@ -155,8 +181,9 @@ class GripperDriver(Node):
             js = self._update_gripper_joint_state()
             self._gripper_pub.publish(stat)
             self._gripper_joint_state_pub.publish(js)
-        except:
+        except Exception as e:
             self.get_logger().error("Failed to contact gripper")
+            self.get_logger().error(e)
 
 
 def main(args=None):
