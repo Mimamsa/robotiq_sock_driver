@@ -1,6 +1,6 @@
 # Robotiq Socket driver
 
-A ROS2 controlling node for UR-mounted Robotiq grippers with Robotiq Wrist Camera URCap installed on the pendant.
+A ROS2 controlling node for Robotiq grippers and Robotiq Wrist Camera mounted on UR robot arm.
 
 Commands are published to port 63352 as ASCII strings.
 
@@ -63,14 +63,7 @@ colcon build --packages-select robotiq_sock_driver
 
 Running a node with a pre-configured launch file:
 ```
-ros2 launch robotiq_sock_driver gripper_driver.launch.py
-```
-
-Or alternatively running the node without the launch file:
-```
-ros2 run robotiq_sock_driver gripper_driver --ros-args \
--p ip_address:=192.168.10.4 -p port:=63352 \
--p inversed_pos:=true -p auto_calibrate:=true
+ros2 launch robotiq_sock_driver gripper_driver.launch.py ip_address:=[IP address]
 ```
 
 
@@ -102,7 +95,6 @@ ros2 echo /gripper/joint_states
 ## TODOs
 
 1. Fix duplicated auto-calibration.
-2. Change all parameters to arguments.
 
 
 ## Reference
@@ -116,6 +108,6 @@ ros2 echo /gripper/joint_states
 
 ## Inforation
 
-- Author: Yu-Hsien Chen (mike_chen@wistron.com)
-- Latest update: 2025/6/11
+- Author: Yu-Hsien Chen (illusion.dark@gmail.com)
+- Latest update: 2025/6/13
 

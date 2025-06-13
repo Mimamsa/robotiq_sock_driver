@@ -20,7 +20,7 @@ class GripperDriver(Node):
         super().__init__('gripper_driver')
 
         self.declare_parameter('num_grippers', 1)
-        self.declare_parameter('ip_address', '192.168.10.4')
+        self.declare_parameter('ip_address', '')
         self.declare_parameter('port', 63352)
         self.declare_parameter('inversed_pos', True)
         self.declare_parameter('auto_calibrate', True)
@@ -30,12 +30,6 @@ class GripperDriver(Node):
         self._port = self.get_parameter('port').get_parameter_value().integer_value
         self.inversed_pos = self.get_parameter('inversed_pos').get_parameter_value().bool_value
         self.auto_calibrate = self.get_parameter('auto_calibrate').get_parameter_value().bool_value
-
-        #self._num_grippers = num_grippers
-        #self._ip_address = ip_address
-        #self._port = port
-        #self._inversed_pos = inversed_pos
-        #self._auto_calibrate = auto_calibrate
 
         self.get_logger().info("Parameters Num grippers: %i, IP address: %s, Port: %s " % (self._num_grippers, self._ip_address, self._port))
 

@@ -18,8 +18,8 @@ setup(
     zip_safe=True,
     maintainer='yuhsienc',
     maintainer_email='illusion.dark@gmail.com',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    description='A ROS2 controlling node for Robotiq grippers and Robotiq Wrist Camera mounted on UR robot arm.',
+    license='Apache 2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [

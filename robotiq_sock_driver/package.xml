@@ -3,9 +3,9 @@
 <package format="3">
   <name>robotiq_sock_driver</name>
   <version>1.0.0</version>
-  <description>TODO: Package description</description>
+  <description>A ROS2 controlling node for Robotiq grippers and Robotiq Wrist Camera mounted on UR robot arm.</description>
   <maintainer email="illusiopn.dark@gmail.com">yuhsienc</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache 2.0</license>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
