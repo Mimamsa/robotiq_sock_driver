@@ -108,6 +108,6 @@ ros2 echo /gripper/joint_states
 
 ## Inforation
 
-- Author: Yu-Hsien Chen (illusion.dark@gmail.com)
+- Author: Yu-Hsien Mike Chen
 - Latest update: 2025/6/13
 
